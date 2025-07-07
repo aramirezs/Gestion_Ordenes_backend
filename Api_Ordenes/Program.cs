@@ -27,7 +27,7 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
-    c.SwaggerDoc("v1", new OpenApiInfo { Title = "SuizaSoft API", Version = "v1" });
+    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Gestion de Ordenes API", Version = "v1" });
 
     // 🔒 Definición del esquema de seguridad
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
@@ -120,11 +120,9 @@ builder.Services.AddCors(o =>
                 "http://localhost:3001" ,
                 "http://localhost:5173" ,
                 "http://localhost:5174" ,
-                "https://app.suiza-soft.com",
-                "https://dev.suiza-soft.com",
-                "https://qa.suiza-soft.com",
-                "https://qa.suizalab.online",
-                "https://app.suizalabgroup.com"
+                "https://lobytech.com",
+                "https://www.lobytech.com",
+                "https://main.d29g2b1txb4hus.amplifyapp.com"
               })
               .AllowAnyMethod()
               .AllowAnyHeader()
@@ -138,11 +136,11 @@ var app = builder.Build();
 
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
+//if (app.Environment.IsDevelopment())
+//{
     app.UseSwagger();
     app.UseSwaggerUI();
-}
+//}
 
 app.UseCors("CorsPolicy");
 

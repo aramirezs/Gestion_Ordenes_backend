@@ -3,6 +3,7 @@ using Application.Interfaces;
 using Domain;
 using Domain.Dtos;
 using Domain.Entities;
+using Domain.Payload;
 using Moq;
 using System;
 using System.Collections.Generic;
@@ -18,10 +19,9 @@ namespace Ordenes.Tests.Application.Commands
         public async Task Handle_ShouldReturnOrdenId_WhenOrdenIsValid()
         {
             // Arrange
-            var ordenDto = new Orden
+            var ordenDto = new OrdenPayload
             {
                 Cliente = "Cliente Test",
-                FechaCreacion = DateTime.UtcNow,
                 Detalles = new List<OrdenDetallePayload>
                 {
                     new OrdenDetallePayload { Producto = "Producto A", Cantidad = 2, PrecioUnitario = 100 }
@@ -31,7 +31,7 @@ namespace Ordenes.Tests.Application.Commands
             var ordenIdEsperado = 200;
 
             var mockUnitOfWork = new Mock<IUnitOfWork>();
-            mockUnitOfWork.Setup(x => x.Ordenes.CrearOrdenAsync(It.IsAny<Orden>()))
+            mockUnitOfWork.Setup(x => x.Ordenes.CrearOrdenAsync(It.IsAny<OrdenPayload>()))
                 .ReturnsAsync((ServiceStatus.Ok, new OrdenDto { /* propiedades */ }, "Éxito"));
 
 
