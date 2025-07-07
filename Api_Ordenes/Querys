@@ -1,0 +1,291 @@
+--------------TABLAS GENERADAS--------------------------------------
+CREATE TABLE  ordenes."MST_ORDENES" (
+    Id SERIAL PRIMARY KEY,
+    FechaCreacion TIMESTAMP NOT NULL,
+    Cliente VARCHAR(100) NOT NULL,
+    Total DECIMAL(18,2) NOT NULL,
+    CONSTRAINT orden_cliente_fecha_unique UNIQUE (Cliente, FechaCreacion)
+);
+drop table ordenes."OrdenDetalles" 
+
+CREATE TABLE ordenes."DET_ORDEN_DETALLE" (
+    Id SERIAL PRIMARY KEY,
+    OrdenId INTEGER NOT NULL,
+    Producto VARCHAR(100) NOT NULL,
+    Cantidad INTEGER NOT NULL CHECK (Cantidad > 0),
+    PrecioUnitario DECIMAL(18,2) NOT NULL CHECK (PrecioUnitario >= 0),
+    Subtotal DECIMAL(18,2) NOT NULL,
+    CONSTRAINT fk_orden FOREIGN KEY (OrdenId)
+        REFERENCES ordenes."MST_ORDENES"(Id)
+        ON DELETE CASCADE
+        ON UPDATE CASCADE
+);
+
+
+----PROCEDIMIENTOS ALMACENADOS Y FUNCIONES------------------------------------------------
+CREATE OR REPLACE FUNCTION ordenes.func_get_orden_by_id(p_id INTEGER)
+RETURNS TABLE (ordenId INTEGER, fechacreacion TIMESTAMP, cliente VARCHAR, total NUMERIC) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT id, fechacreacion, cliente, total FROM ordenes."MST_ORDENES" WHERE id = p_id;
+END;
+$$ LANGUAGE plpgsql;
+
+--DROP FUNCTION func_get_orden_by_id(integer)
+CREATE OR REPLACE FUNCTION ordenes.func_get_orden_detalles_by_id(p_ordenid INTEGER)
+RETURNS TABLE (id INTEGER, ordenid INTEGER, producto VARCHAR, cantidad INTEGER, preciounitario NUMERIC, subtotal NUMERIC) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT dd.id, dd.ordenid, dd.producto, dd.cantidad, dd.preciounitario, dd.subtotal FROM ordenes."DET_ORDEN_DETALLE" dd
+	WHERE dd.ordenid = p_ordenid;
+END;
+$$ LANGUAGE plpgsql;
+
+----
+select * from ordenes.func_get_orden_detalles_by_id(4)
+
+
+CREATE OR REPLACE FUNCTION ordenes.func_listar_ordenes(    
+    p_page INT,
+    p_pagesize INT,
+    p_cliente VARCHAR DEFAULT NULL,
+    p_desde TIMESTAMP DEFAULT NULL,
+    p_hasta TIMESTAMP DEFAULT NULL
+)
+RETURNS TABLE (id INTEGER, fechacreacion TIMESTAMP, cliente VARCHAR, total NUMERIC) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT id, fechacreacion, cliente, total
+    FROM ordenes."MST_ORDENES"
+    WHERE (p_cliente IS NULL OR cliente ILIKE CONCAT('%', p_cliente, '%'))
+      AND (p_desde IS NULL OR fechacreacion >= p_desde)
+      AND (p_hasta IS NULL OR fechacreacion <= p_hasta)
+    ORDER BY fechacreacion DESC
+    OFFSET (p_page - 1) * p_pagesize LIMIT p_pagesize;
+END;
+$$ LANGUAGE plpgsql;
+*/
+
+--ACTUALIZAR ORDEN --
+
+
+
+---------crear y editar --------
+select * from ordenes."MST_ORDENES" ;
+select * from ordenes."DET_ORDEN_DETALLE" ;
+
+SELECT * FROM ordenes.func_crear_orden('PEDRO', '[{"Producto":"Armario","Cantidad":3,"PrecioUnitario":200}]')
+
+CREATE OR REPLACE FUNCTION ordenes.func_crear_orden(
+    p_cliente VARCHAR,
+    p_detalles_json JSON
+) RETURNS INT AS $$
+DECLARE
+    v_idorden INT;
+    v_total NUMERIC := 0;
+    item JSON;
+    v_producto TEXT;
+    v_cantidad INT;
+    v_precio NUMERIC;
+    v_subtotal NUMERIC;
+    v_duplicado INT;
+BEGIN
+    -- Validar duplicado
+    SELECT COUNT(*) INTO v_duplicado FROM ordenes."MST_ORDENES" WHERE cliente = p_cliente AND fechacreacion = now();
+    IF v_duplicado > 0 THEN
+        RAISE EXCEPTION 'Ya existe una orden para este cliente en esa fecha';
+    END IF;
+
+    -- Insertar cabecera sin total aún
+    INSERT INTO ordenes."MST_ORDENES" (fechacreacion, cliente, total)
+    VALUES (now(), p_cliente, 0)
+    RETURNING id INTO v_idorden;
+
+    -- Recorrer detalles
+    FOR item IN SELECT * FROM json_array_elements(p_detalles_json)
+    LOOP
+        v_producto := item->>'Producto';
+        v_cantidad := (item->>'Cantidad')::INT;
+        v_precio := (item->>'PrecioUnitario')::NUMERIC;
+
+        IF v_cantidad <= 0 OR v_precio < 0 THEN
+            RAISE EXCEPTION 'Cantidad o precio inválido';
+        END IF;
+
+        v_subtotal := v_cantidad * v_precio;
+        v_total := v_total + v_subtotal;
+
+        INSERT INTO ordenes."DET_ORDEN_DETALLE" (ordenid, producto, cantidad, preciounitario, subtotal)
+        VALUES (v_idorden, v_producto, v_cantidad, v_precio, v_subtotal);
+    END LOOP;
+
+    -- Actualizar total
+    UPDATE ordenes."MST_ORDENES" SET total = v_total WHERE id = v_idorden;
+
+    RETURN v_idorden;
+END;
+$$ LANGUAGE plpgsql;
+
+select * from ordenes."MST_ORDENES"
+
+---editar--
+CREATE OR REPLACE FUNCTION ordenes.func_actualizar_orden(
+    p_id INT,
+    p_cliente VARCHAR,
+    p_detalles_json JSON
+) RETURNS TEXT AS $$
+DECLARE
+    v_total NUMERIC := 0;
+    item JSON;
+    v_producto TEXT;
+    v_cantidad INT;
+    v_precio NUMERIC;
+    v_subtotal NUMERIC;
+BEGIN
+    -- Validar si existe
+    IF NOT EXISTS (SELECT 1 FROM ordenes."MST_ORDENES" WHERE id = p_id) THEN
+        RETURN 'NO_EXISTE';
+    END IF;
+
+    -- Validar duplicado (misma fecha y cliente en otra orden)
+    IF EXISTS (
+        SELECT 1 FROM ordenes."MST_ORDENES" o
+        WHERE o.cliente = p_cliente
+        AND o.fechacreacion = (SELECT fechacreacion FROM ordenes."MST_ORDENES" WHERE id = p_id)
+        AND o.id <> p_id
+    ) THEN
+        RETURN 'DUPLICADO';
+    END IF;
+
+    -- Actualizar cabecera
+    UPDATE ordenes."MST_ORDENES" SET cliente = p_cliente WHERE id = p_id;
+
+    -- Eliminar detalles anteriores
+    DELETE FROM ordenes."DET_ORDEN_DETALLE" WHERE ordenid = p_id;
+
+    -- Insertar nuevos detalles
+    FOR item IN SELECT * FROM json_array_elements(p_detalles_json)
+    LOOP
+        v_producto := item->>'Producto';
+        v_cantidad := (item->>'Cantidad')::INT;
+        v_precio := (item->>'PrecioUnitario')::NUMERIC;
+
+        IF v_cantidad <= 0 OR v_precio < 0 THEN
+            RAISE EXCEPTION 'Cantidad o precio inválido';
+        END IF;
+
+        v_subtotal := v_cantidad * v_precio;
+        v_total := v_total + v_subtotal;
+
+        INSERT INTO ordenes."DET_ORDEN_DETALLE" (ordenid, producto, cantidad, preciounitario, subtotal)
+        VALUES (p_id, v_producto, v_cantidad, v_precio, v_subtotal);
+    END LOOP;
+
+    -- Actualizar total
+    --UPDATE ordenes."DET_ORDEN_DETALLE" SET subtotal = v_total WHERE id = p_id;
+	UPDATE ordenes."MST_ORDENES" SET total = v_total WHERE id = p_id;
+
+    RETURN 'OK';
+END;
+$$ LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE function ordenes.func_listar_ordenes(
+    p_cliente text,
+    p_desde DATE,
+    p_hasta DATE,
+    p_page INT,
+    p_pagesize INT,
+    p_ordenarpor TEXT
+)
+RETURNS TABLE (
+    id INT,
+    fechacreacion TIMESTAMP,
+    cliente character varying,
+    total NUMERIC
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT o.id, o.fechacreacion, o.cliente, o.total
+    FROM ordenes."MST_ORDENES" o
+    WHERE
+        (p_cliente IS NULL OR o.cliente ILIKE '%' || p_cliente || '%') AND
+        (p_desde IS NULL OR o.fechacreacion >= p_desde) AND
+        (p_hasta IS NULL OR o.fechacreacion <= p_hasta)
+    ORDER BY
+        CASE 
+            WHEN LOWER(p_ordenarpor) = 'cliente' THEN o.cliente
+            WHEN LOWER(p_ordenarpor) = 'total' THEN o.total::TEXT
+            ELSE o.fechacreacion::TEXT
+        END
+    OFFSET (p_page - 1) * p_pagesize
+    LIMIT p_pagesize;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION ordenes.func_eliminar_orden(p_id INT)
+RETURNS TEXT AS $$
+DECLARE
+    v_existe INT;
+BEGIN
+    SELECT COUNT(*) INTO v_existe FROM ordenes."MST_ORDENES" WHERE id = p_id;
+    IF v_existe = 0 THEN
+        RETURN 'NO_EXISTE';
+    END IF;
+
+    DELETE FROM ordenes."DET_ORDEN_DETALLE" WHERE ordenid = p_id;
+    DELETE FROM ordenes."MST_ORDENES" WHERE id = p_id;
+
+    RETURN 'OK';
+END;
+$$ LANGUAGE plpgsql;
+
+ SELECT * FROM ordenes.func_listar_ordenes('', '2025-07-03', '2025-07-07', 1, 10, 'FechaCreacion');
+ 
+CREATE OR REPLACE FUNCTION ordenes.func_listar_ordenes(
+    p_cliente TEXT,
+    p_desde TIMESTAMP,
+    p_hasta TIMESTAMP,
+    p_page INT,
+    p_pagesize INT,
+    p_ordenarpor TEXT
+)
+RETURNS TABLE (
+    id INT,
+    fechacreacion TIMESTAMP,
+    cliente VARCHAR,
+    total NUMERIC,
+    total_items INT,
+    total_pages INT
+) AS $$
+BEGIN
+    RETURN QUERY
+    WITH filtered AS (
+        SELECT * 
+        FROM ordenes."MST_ORDENES" o
+        WHERE 
+            (p_cliente IS NULL OR o.cliente ILIKE '%' || p_cliente || '%') AND
+            (p_desde IS NULL OR o.fechacreacion >= p_desde) AND
+            (p_hasta IS NULL OR o.fechacreacion <= p_hasta)
+    ),
+    counted AS (
+        SELECT COUNT(*) AS total_count FROM filtered
+    )
+    SELECT 
+        f.id,
+        f.fechacreacion,
+        f.cliente,
+        f.total,
+        c.total_count::INT AS total_items,
+        CEIL(c.total_count::DECIMAL / p_pagesize)::INT AS total_pages
+    FROM filtered f, counted c
+    ORDER BY
+        CASE 
+            WHEN LOWER(p_ordenarpor) = 'cliente' THEN f.cliente
+            WHEN LOWER(p_ordenarpor) = 'total' THEN f.total::TEXT
+            ELSE f.fechacreacion::TEXT
+        END
+    OFFSET (p_page - 1) * p_pagesize
+    LIMIT p_pagesize;
+END;
+$$ LANGUAGE plpgsql;
