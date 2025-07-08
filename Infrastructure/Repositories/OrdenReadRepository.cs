@@ -34,7 +34,7 @@ namespace Infrastructure.Repositories
             var orden = new OrdenDto
             {
                 OrdenId = reader.GetFieldValue<int>(reader.GetOrdinal("id")),
-                FechaCreacion = reader.GetFieldValue<DateTime>(reader.GetOrdinal("fechacreacion")),
+                FechaCreacion = reader.GetDateTime(reader.GetOrdinal("fechacreacion")).ToString("yyyy-MM-dd HH:mm:ss"),
                 Cliente = reader.GetFieldValue<string>(reader.GetOrdinal("cliente")),
                 Total = reader.GetFieldValue<decimal>(reader.GetOrdinal("total")),
                 Detalles = new List<OrdenDetalleDto>()
@@ -83,7 +83,7 @@ namespace Infrastructure.Repositories
         {
             new("@Cliente", (object?)cliente ?? DBNull.Value),
             new("@Desde", (object?)desde ?? DBNull.Value),
-            new("@Hasta", (object?)hasta ?? DBNull.Value),
+            new("@Hasta", (object?)hasta.Value.AddDays(1) ?? DBNull.Value),
             new("@Page", page),
             new("@PageSize", pageSize),
             new("@OrdenarPor", ordenColumn)
@@ -113,7 +113,7 @@ namespace Infrastructure.Repositories
                     {
                         OrdenId = reader.GetInt32(reader.GetOrdinal("id")),
                         Cliente = reader.GetString(reader.GetOrdinal("cliente")),
-                        FechaCreacion = reader.GetDateTime(reader.GetOrdinal("fechacreacion")),
+                        FechaCreacion = reader.GetDateTime(reader.GetOrdinal("fechacreacion")).ToString("yyyy-MM-dd HH:mm:ss"),
                         Total = reader.GetDecimal(reader.GetOrdinal("total"))
                     };
 
@@ -179,7 +179,7 @@ namespace Infrastructure.Repositories
             {
                 new("@Cliente", (object?)cliente ?? DBNull.Value),
                 new("@Desde", (object?)desde ?? DBNull.Value),
-                new("@Hasta", (object?)hasta ?? DBNull.Value),
+                new("@Hasta", (object?)hasta.Value.AddDays(1) ?? DBNull.Value),
                 new("@Page", page),
                 new("@PageSize", pageSize),
                         new("@OrdenarPor", ordenColumn)
@@ -199,7 +199,7 @@ namespace Infrastructure.Repositories
                     {
                         OrdenId = reader.GetInt32(reader.GetOrdinal("id")),
                         Cliente = reader.GetString(reader.GetOrdinal("cliente")),
-                        FechaCreacion = reader.GetDateTime(reader.GetOrdinal("fechacreacion")),
+                        FechaCreacion = reader.GetDateTime(reader.GetOrdinal("fechacreacion")).ToString("yyyy-MM-dd HH:mm:ss"),
                         Total = reader.GetDecimal(reader.GetOrdinal("total"))
                     });
                 }
