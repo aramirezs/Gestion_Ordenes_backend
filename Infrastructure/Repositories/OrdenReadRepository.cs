@@ -83,7 +83,7 @@ namespace Infrastructure.Repositories
         {
             new("@Cliente", (object?)cliente ?? DBNull.Value),
             new("@Desde", (object?)desde ?? DBNull.Value),
-            new("@Hasta", (object?)hasta.Value.AddDays(1) ?? DBNull.Value),
+            new("@Hasta", hasta.HasValue ? (object)hasta.Value.AddDays(1) : DBNull.Value),
             new("@Page", page),
             new("@PageSize", pageSize),
             new("@OrdenarPor", ordenColumn)
